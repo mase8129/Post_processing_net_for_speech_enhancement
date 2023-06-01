@@ -1,0 +1,21 @@
+{
+    "batch_size": 64,
+    "fps_noisy": "/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Data/allFiles/noisySpeech",
+    "fps_produced": "/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Data/allFiles/producedSpeech",
+    "fps_voicefixer": "/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Data/allFiles/voicefixerOutput",
+    "hop_length": 64,
+    "input_shape": [
+        441000,
+        1
+    ],
+    "n_epochs": 5,
+    "n_fft": 512,
+    "n_mels": 16,
+    "offset": 6,
+    "sample_length": 20,
+    "shuffle_buffer_size": 300,
+    "sr": 44100,
+    "test_dataset_path": "/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/test.tfrecord",
+    "train_dataset_path": "/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/train.tfrecord",
+    "win_length": 512
+}
