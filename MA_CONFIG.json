@@ -1,5 +1,6 @@
 {
     "batch_size": 16,
+    "filter_size": 8,
     "fps_noisy": "/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Data/allFiles/noisySpeech",
     "fps_produced": "/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Data/allFiles/producedSpeech",
     "fps_voicefixer": "/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Data/allFiles/voicefixerOutput",
@@ -8,7 +9,8 @@
         441000,
         1
     ],
-    "n_epochs": 10,
+    "kernel_size": 2,
+    "n_epochs": 5,
     "n_fft": 512,
     "n_mels": 16,
     "offset": 6,
