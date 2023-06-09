@@ -10,7 +10,7 @@
         1
     ],
     "kernel_size": 2,
-    "n_epochs": 5,
+    "n_epochs": 3,
     "n_fft": 512,
     "n_mels": 16,
     "offset": 6,
