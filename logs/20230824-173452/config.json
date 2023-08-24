@@ -1,0 +1,9 @@
+{
+    "activation_func": "tanh",
+    "batch_size": 16,
+    "filter_size": 10,
+    "kernel_size": 5,
+    "learning_rate": 0.001,
+    "n_epochs": 2,
+    "shuffle_buffer_size": 1000
+}

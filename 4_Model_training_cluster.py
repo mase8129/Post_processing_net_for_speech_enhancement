@@ -6,7 +6,6 @@ from tensorflow import keras
 from keras import layers
 from keras import models
 
-
 # Helper libraries
 import os
 import os.path
@@ -21,6 +20,7 @@ import IPython.display as pd
 import pprint
 import datetime        
 from scipy.io.wavfile import write
+import random
 
 
 # funcs
@@ -94,6 +94,45 @@ def set_speechfile(test_dataset, log_dir):
     
     # save audiofile to disk
     write(log_dir + '/_audiofile_for_prediction' + '.wav', int(44100), float2pcm(speech_for_predicition))
+   
+    return speech_for_predicition
+
+#--------------------------------------------
+# get audiofile from dataset and use as input for prediction
+def set_3_speechfiles(dataset, log_dir):
+
+    # unbatch dataset and save 3 files to list
+    DS = dataset.unbatch().as_numpy_iterator()
+    # get length of dataset
+    length = len([d for d in dataset.unbatch()])    
+    # generate 3 random numbers
+    random.seed(42)
+    random_numbers = random.sample(range(0, length), 3)
+    # initate list for speechfiles
+    all_speechfiles = []
+    
+    for i, sample in enumerate(DS):
+        all_speechfiles.append(sample[0])
+
+    speech_for_predicition = all_speechfiles[random_numbers[0]], all_speechfiles[random_numbers[1]], all_speechfiles[random_numbers[2]]
+
+    # plot speechfiles used for prediction
+    x = np.arange(0, len(speech_for_predicition[0])/44100, 1/44100)
+    fig, (ax1, ax2, ax3) = plt.subplots(3)
+    fig.suptitle('3 Speechfiles used for prediction')
+    ax1.plot(x, speech_for_predicition[0])
+    ax2.plot(x, speech_for_predicition[1])
+    ax3.plot(x, speech_for_predicition[2])
+    plt.xlabel('Time in s')
+    plt.ylabel('Amplitude')
+    plt.tight_layout()
+    plt.savefig(log_dir + '/0_audiofiles_for_prediction.png')
+    plt.close()
+    
+    # save audiofiles to disk
+    for i, file in enumerate(speech_for_predicition):
+        write(log_dir + '/1_audiofile_for_prediction_' + str(i) + '.wav', int(44100), float2pcm(file))
+        
    
     return speech_for_predicition
 
@@ -258,23 +297,30 @@ class CustomLoss(tf.keras.losses.Loss):
     def call(self, y_true, y_pred):
         mae = self.mae(y_true, y_pred)
         stft = self.stft(y_true, y_pred)
-        return ((mae+stft) / 2)
+        return (stft)
 
 
 #--------------------------------------------
 
+# initialize log_dir
+log_dir = "./logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+# make directory if not exist
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
 # some values for training
 config = {
-    'batch_size': 32,
+    'batch_size': 16,
     'shuffle_buffer_size': 1000,
     'n_epochs': 2,
-    'learning_rate': 0.003,
+    'learning_rate': 0.001,
     # Filter:Kernel = 4:1 (see hifi-gan paper)
-    # 'filter_size': 64,
-    # 'kernel_size': 5,
+    # 'filter_size': 128,
+    # 'kernel_size': 32,
     'filter_size': 10,
-    'kernel_size': 10,
-    'dropout_rate': 0.5
+    'kernel_size': 5,
+    'activation_func': 'tanh'
+
 }
 
 # some values for the model
@@ -283,7 +329,7 @@ output_channels = 1
 
 
 # save config to disk
-with open('./config_cluster.json', 'w+') as fp:
+with open(log_dir + '/config.json', 'w+') as fp:
     json.dump(config, fp, sort_keys=True, indent=4)
 
 
@@ -327,15 +373,15 @@ def build_model(input_shape):
     # add dropout layer, batch normalization and activation layer
     #model.add(keras.layers.Dropout(config['dropout_rate']))
     #model.add(keras.layers.BatchNormalization())
-    model.add(keras.layers.Activation('tanh'))
+    model.add(keras.layers.Activation(config['activation_func']))
 
     # Add the remaining Conv1D layers
-    for _ in range(11):
+    for _ in range(4):
         model.add(keras.layers.Conv1D(filters=config['filter_size'], kernel_size=config['kernel_size'], padding='same'))
         # add dropout layer, batch normalization and activation layer
         #model.add(keras.layers.Dropout(config['dropout_rate']))
         #model.add(keras.layers.BatchNormalization())
-        model.add(keras.layers.Activation('tanh'))
+        model.add(keras.layers.Activation(config['activation_func']))
 
     # Add the final Conv1D layer without activation layer
     model.add(keras.layers.Conv1D(output_channels, kernel_size=config['kernel_size'], padding='same'))
@@ -345,15 +391,6 @@ def build_model(input_shape):
 
     return model
 
-
-#--------------------------------------------
-
-
-# initialize log_dir
-log_dir = "./logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-# make directory if not exist
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
 
 
 #--------------------------------------------
@@ -382,7 +419,7 @@ tensorboard_callback = keras.callbacks.TensorBoard(
 
 
 # get speechfile for prediction
-speech_for_predicition = set_speechfile(test_dataset, log_dir)
+speech_for_predicition = set_3_speechfiles(test_dataset, log_dir)
 
 # # define custom callback
 class CustomCallback(keras.callbacks.Callback):
@@ -392,29 +429,33 @@ class CustomCallback(keras.callbacks.Callback):
         
         # save predicted audio file after each epoch to disk
         # get audio file from model prediciton
-        audio = self.model.predict(speech_for_predicition)
-
-        # change shape to (len(audio), 1)
-        audio = tf.squeeze(audio, axis=-1)
-        audio = tf.squeeze(audio, axis=-1).numpy()
-        #print(audio.shape)
-
-        # normalize audio with numpy
-        #audio = librosa.util.normalize(audio).astype(np.float32)
-        audio = audio.astype(np.float32)
-
-        # save plot to disk
-        plt.figure(figsize=(8, 4))
-        x = np.arange(0, len(audio)/44100, 1/44100)
-        plt.plot(x, audio)
-        plt.title('Audiofile')
+        audio = []
+        for i in range(len(speech_for_predicition)):
+            speech = self.model.predict(speech_for_predicition[i])
+     
+            # change shape to (len(audio), 1)
+            speech = tf.squeeze(speech, axis=-1)
+            speech = tf.squeeze(speech, axis=-1).numpy()
+            #print(audio.shape)
+            speech = speech.astype(np.float32)
+            audio.append(speech)
+    
+        # plot audiofiles
+        x = np.arange(0, len(audio[0])/44100, 1/44100)
+        fig, (ax1, ax2, ax3) = plt.subplots(3)
+        fig.suptitle('predicted speechfiles after epoch ' + str(epoch+1))
+        ax1.plot(x, audio[0])
+        ax2.plot(x, audio[1])
+        ax3.plot(x, audio[2])
         plt.xlabel('Time in s')
         plt.ylabel('Amplitude')
-        plt.savefig(log_dir + '/_audiofile_epoch' + str(epoch+1) + '.png')
+        plt.tight_layout()
+        plt.savefig(log_dir + '/0_audiofiles_pred_after_epoch'+ str(epoch+1) + '.png')
         plt.close()
-
-        # write audio file to disk (16-bit PCM WAV)
-        write(log_dir + '/_audiofile_epoch' + str(epoch+1) + '.wav', 44100, float2pcm(audio))
+        
+        # save audiofiles to disk
+        for i, file in enumerate(audio):
+            write(log_dir + '/1_audiofile_pred_after_epoch_' + str(epoch+1) + '_#'+ str(i) + '.wav', int(44100), float2pcm(file))
 
 
 #--------------------------------------------
@@ -424,9 +465,10 @@ model = build_model(input_shape = input_shape)
 # compile model
 model.compile(optimizer = keras.optimizers.Adam(learning_rate=config['learning_rate']),
               loss = CustomLoss(),
-              metrics = tf.keras.losses.MeanAbsoluteError())
+              metrics = tf.keras.losses.MeanSquaredError())
 
 model.summary()
+
 
 #--------------------------------------------
 
@@ -438,12 +480,39 @@ history = model.fit(train_dataset,
                     callbacks=[save_callback, tensorboard_callback, CustomCallback()])
 
 # save model
-model.save('./model.keras')
+# model.save('./model.keras')
 
 # save history
-with open('./history.json', 'w+') as fp:
+with open(log_dir + '/history.json', 'w+') as fp:
     json.dump(history.history, fp, sort_keys=True, indent=4)
 
 
-# call def to save audio to summaries
-save_audio_to_summaries(log_dir)
+#--------------------------------------------
+# plot loss and accuracy
+
+
+train_loss = history.history['loss']
+eval_loss = history.history['val_loss']
+
+
+# plot loss and accuracy in one figure
+fig1 = plt.figure()
+plt.plot(range(config['n_epochs']), train_loss, label='train')
+plt.plot(range(config['n_epochs']), eval_loss, label='eval')
+
+plt.legend()
+plt.grid(True)
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.title('Training with ' 
+                            + str(config['n_epochs'])
+                            + ' epochs \n batch-size: '
+                            + str(config['batch_size']))
+
+# save plot to disk
+plt.savefig(log_dir + '/loss.png')
+plt.close()
+
+
+
+

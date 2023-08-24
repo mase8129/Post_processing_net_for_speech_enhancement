@@ -1,4 +1,5 @@
 {
+    "activation_func": "tanh",
     "batch_size": 16,
     "dropout_rate": 0.5,
     "filter_size": 64,
@@ -11,8 +12,8 @@
         1
     ],
     "kernel_size": 5,
-    "learning_rate": 0.004,
-    "n_epochs": 50,
+    "learning_rate": 0.002,
+    "n_epochs": 20,
     "n_fft": 512,
     "n_mels": 16,
     "offset": 6,
