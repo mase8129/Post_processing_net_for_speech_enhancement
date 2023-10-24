@@ -55,9 +55,10 @@ def load_and_preprocess_dataset(path, config, train_dataset=bool):
 
         # data augmentation
         # sample shift
+        # waveform auf 0 setzen
+        # volume change
         # pitch shift
         # time stretch
-        # add noise
         #train_dataset = train_dataset.map(lambda x, y:  ,num_parallel_calls=AUTOTUNE)
 
     dataset = dataset.shuffle(config['shuffle_buffer_size']).batch(config['batch_size']).prefetch(buffer_size=AUTOTUNE)
@@ -270,18 +271,23 @@ class TFMultiResolutionSTFT(tf.keras.layers.Layer):
 class CustomLoss(tf.keras.losses.Loss):
     """custom loss calculated from MAE/MSE and Multiresolution STFT loss"""
 
-    def __init__(self):
+    def __init__(self, config):
         super().__init__()
+        self.config = config
         self.mae = tf.keras.losses.MeanAbsoluteError()
         self.mse = tf.keras.losses.MeanSquaredError()
         self.stft = TFMultiResolutionSTFT()
 
 
     def call(self, y_true, y_pred):
-        mae = self.mae(y_true, y_pred)
-        mse = self.mse(y_true, y_pred)
-        stft = self.stft(y_true, y_pred)
-        return (stft)
+        # define the loss functions
+        mae = self.mae(y_true, y_pred) # l1 loss
+        stft = self.stft(y_true, y_pred) # multi resolution stft loss
+
+        if self.config['loss_func'] == 'stft':
+            return (stft)
+        elif self.config['loss_func'] == 'mix':
+            return (stft + (mae/4))
 
 
 

@@ -33,20 +33,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--n_epochs', type=int, default=20)
-    parser.add_argument('--learning_rate', type=float, default=0.0002)
+    parser.add_argument('--learning_rate', type=float, default=0.001)
     #parser.add_argument('--n_filters', type=int, default=128)
     #parser.add_argument('--kernel_size', type=int, default=32)
     #parser.add_argument('--n_layers', type=int, default=12)
     parser.add_argument('--DS', type=int, default=None, help='Number of elements in dataset. If None, then all elements are used.')
     parser.add_argument('--HPC', type=int, default=0, help='If 1, then run on HPC.')
     parser.add_argument('--model', type=int, default=0)
+    parser.add_argument('--loss_func', type=str, default='stft')
     args = parser.parse_args()
     
     # get args to config-dict
     config = vars(args)
     
     # add values to config
-    config['loss_func'] = 'stft'
     config['shuffle_buffer_size'] = 1500
     config['sr'] = 44100
     config['shift_samples'] = int((441/44100) * config['sr']) # 441 samples bei 44100 Hz
@@ -95,11 +95,11 @@ def main():
     # define callbacks
 
     # LR Scheduler
-    # reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=5, min_lr=0.0001)
-
+    reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.5, patience=5, min_lr=0.0001)
     # stop training if val_loss does not decrease
-    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', verbose=1, patience=10)
-
+    early_stop = keras.callbacks.EarlyStopping(monitor='loss', verbose=1, patience=15)
+    
+    callbacks = [reduce_lr, early_stop]
 
     #--------------------------------------------
     # get model
@@ -109,13 +109,8 @@ def main():
         model = build_model_mid(input_shape, output_shape, config)
     elif config['model'] == 2:
         model = build_model_HiFiGAN(input_shape, output_shape, config)
-
-    elif config['model'] == 5:
-        model = build_model_HiFiGAN_v5(input_shape, output_shape, config)
-    elif config['model'] == 6:
-        model = build_model_HiFiGAN_v6(input_shape, output_shape, config)
-    elif config['model'] == 7:
-        model = build_model_HiFiGAN_v7(input_shape, output_shape, config)
+   
+   
     elif config['model'] == 8:
         model = build_model_HiFiGAN_v8(input_shape, output_shape, config)
     elif config['model'] == 81:
@@ -126,21 +121,31 @@ def main():
         model = build_model_HiFiGAN_v812(input_shape, output_shape, config)
 
 
+    elif config['model'] == 9:
+        model = build_model_CNN_v9(input_shape, output_shape, config)
+    elif config['model'] == 10:
+        # define some parameters
+        config['demucs_depth'] = 5
+        config['demucs_kernel'] = 8
+        config['demucs_stride'] = 2
+        config['demucs_starting_filter'] = 8
+        # get model
+        model = Demucs_v1(input_shape, config)
 
+    # elif config['model'] == 9:
+    #     # define some parameters
+    #     config['demucs_depth'] = 5
+    #     config['demucs_kernel'] = 8
+    #     config['demucs_stride'] = 2
+    #     config['demucs_starting_filter'] = 8
+    #     # get model
 
-
-    # elif config['model'] == 10:
-    #     model = build_model_autoencoder(input_shape, output_shape, config)
-
-
-    # elif config['model'] == 10:
-    #     model = build_model_autoencoder_v1(input_shape, output_shape, config)
-
-
+    #     model_input = Input(shape=input_shape)
+    #     model = Demucs(model_input, config)
 
     # compile model
     model.compile(optimizer = keras.optimizers.legacy.Adam(learning_rate=config['learning_rate']),
-                  loss = CustomLoss()
+                  loss = CustomLoss(config)
                   )
     
     # # GAN model
@@ -161,7 +166,6 @@ def main():
     print('------------------------------')
     model.summary()   
 
-
     #-----------------------------------
 
     # start timer
@@ -171,7 +175,7 @@ def main():
     history = model.fit(train_dataset,
                         epochs=config['n_epochs']
                         ,validation_data=test_dataset
-                        #,callbacks=[early_stop]
+                        ,callbacks=callbacks
                         )
     
     # stop timer
@@ -184,7 +188,7 @@ def main():
 
     # save history
     # change type of elements in history.history to float (for json)
-    # history.history['lr'] = [float(i) for i in history.history['lr']]
+    history.history['lr'] = [float(i) for i in history.history['lr']]
     with open(log_dir + '/history.json', 'w+') as fp:
         json.dump(history.history, fp, sort_keys=True, indent=4)
 
@@ -197,7 +201,6 @@ def main():
         json.dump(config, fp, sort_keys=True, indent=4)
     
     
-
     #--------------------------------------------
     # plot loss
     
@@ -225,12 +228,11 @@ def main():
 
     # get one speechfile from dataset
     speech_for_predicition = set_1_speechfile(valid_dataset, log_dir, config)
-    # predict
-    #speech = tf.reshape(speech_for_predicition, (1, speech_for_predicition.shape[0], 1))
+
     # get shapes of speech_for_predicition
     print('Shape of speech_for_predicition: ', speech_for_predicition.shape)
 
-
+    # predict
     y_pred_tf = model.predict(speech_for_predicition)
     # change shape to (len(audio), 1)
     y_pred_np = tf.squeeze(y_pred_tf, axis=-1).numpy()

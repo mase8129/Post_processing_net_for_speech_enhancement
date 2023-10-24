@@ -1,7 +1,7 @@
 # imports
 import tensorflow as tf
 from tensorflow import keras
-from keras.layers import Conv1D, Conv2D, UpSampling1D, concatenate, Dense, BatchNormalization, GlobalAveragePooling1D, Flatten, Input, Add
+from keras.layers import Conv1D, Conv1DTranspose, LSTM, Conv2D, UpSampling1D, concatenate, Dense, BatchNormalization, GlobalAveragePooling1D, Flatten, Input, Add
 from keras.models import Model
 import numpy as np
 
@@ -27,7 +27,50 @@ class GLU(tf.keras.layers.Layer):
             'sigmoid': self.sigmoid,
         })
         return config
-    
+
+def demucs_encoder_block(x, filters, kernel_size):
+    x = Conv1D(filters=filters, kernel_size=kernel_size, activation=None, padding='same')(x)
+    x = keras.layers.Activation('relu')(x)
+    x = Conv1D(filters=filters * 2, kernel_size=1, activation=None, padding='same')(x)
+    x = GLU()(x)
+    return x
+
+def demucs_decoder_block(x, filters, kernel_size, transpose_filters, with_activation: bool):
+    x = Conv1D(filters=filters * 2, kernel_size=1, activation=None, padding='same')(x)
+    x = GLU()(x)
+    x = Conv1DTranspose(filters=transpose_filters, kernel_size=kernel_size, padding='same')(x)
+
+    if with_activation == True:
+        x = keras.layers.Activation('relu')(x)
+
+    return x
+
+def demucs_blstm(x, filters):
+    x = LSTM(filters, return_sequences=True, return_state=False)(x)
+    x = LSTM(filters, return_sequences=True, return_state=False)(x)
+    return x
+
+
+def length_padded(length, config):
+    """
+    Return the nearest valid length to use with the model so that
+    there is no time steps left over in a convolutions, e.g. for all
+    layers, size of the input - kernel_size % stride = 0.
+    If the mixture has a valid length, the estimated sources
+    will have exactly the same length.
+    """
+    length = np.ceil(length * 1)
+    for idx in range(config['demucs_depth']):
+        length = np.ceil((length - config['demucs_kernel']) / config['demucs_stride']) + 1
+        length = max(length, 1)
+    for idx in range(config['demucs_depth']):
+        length = (length - 1) * config['demucs_stride'] + config['demucs_kernel']
+    length = int(np.ceil(length / 1))
+    return int(length)
+
+
+
+
 
 #--------------------------------------------
 # define GAN model from HiFi-GAN and SEGAN paper
@@ -45,13 +88,13 @@ def build_generator(input_shape, output_shape, config):
 
     # Generator - Decoder with skip connections
     # transpose convolutions
-    up1 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2))(conv4)
+    up1 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2)(conv4))
     merge1 = concatenate([up1, conv3], axis=-1)
-    up2 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2))(merge1)
+    up2 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2)(merge1))
     merge2 = concatenate([up2, conv2], axis=-1)
-    up3 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2))(merge2)
+    up3 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2)(merge2))
     merge3 = concatenate([up3, conv1], axis=-1)
-    up4 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2))(merge3)
+    up4 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2)(merge3))
     
     # Generator - Output
     model = Dense(output_shape[1], activation='tanh')(up4)

@@ -10,6 +10,11 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=marius.seipel@campus.tu-berlin.de
 
+# add ld paths
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/beegfs/home/users/m/mase8129/scratch/marius-s/miniconda3/lib
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/beegfs/home/users/m/mase8129/scratch/marius-s/miniconda3/envs/gpu-new/lib/
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/beegfs/home/users/m/mase8129/scratch/marius-s/miniconda3/envs/gpu-new/lib/python3.8/site-packages/tensorrt/
+
 # load modules
 module load nvidia/cuda/11.2 
 module list
@@ -17,4 +22,4 @@ module list
 # check GPU allocation
 nvidia-smi -L 
 # run python script with args
-python3 ./4_Model_train.py --n_epochs=100 --HPC=1 --model=811 --DS=2000
+python3 ./4_Model_train.py --n_epochs=100 --HPC=1 --model=811 --DS=2000 --batch_size=4
