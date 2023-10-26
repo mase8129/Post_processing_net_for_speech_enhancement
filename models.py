@@ -1055,9 +1055,6 @@ def build_model_CNN_v9(input_shape, output_shape, config):
 
 
 
-
-
-
 # --------------------- Not ready yet --------------------------
 
 

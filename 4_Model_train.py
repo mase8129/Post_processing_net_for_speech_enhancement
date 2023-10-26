@@ -34,33 +34,49 @@ def main():
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--n_epochs', type=int, default=20)
     parser.add_argument('--learning_rate', type=float, default=0.001)
-    #parser.add_argument('--n_filters', type=int, default=128)
-    #parser.add_argument('--kernel_size', type=int, default=32)
-    #parser.add_argument('--n_layers', type=int, default=12)
     parser.add_argument('--DS', type=int, default=None, help='Number of elements in dataset. If None, then all elements are used.')
     parser.add_argument('--HPC', type=int, default=0, help='If 1, then run on HPC.')
     parser.add_argument('--model', type=int, default=0)
     parser.add_argument('--loss_func', type=str, default='stft')
+    parser.add_argument('--data', type=str, default='voicefixer')
     args = parser.parse_args()
     
     # get args to config-dict
     config = vars(args)
     
     # add values to config
-    config['shuffle_buffer_size'] = 1500
+    config['shuffle_buffer_size'] = 4500
     config['sr'] = 44100
     config['shift_samples'] = int((441/44100) * config['sr']) # 441 samples bei 44100 Hz
 
     # set paths to tfrecords
-    if config['HPC'] == 1:
+    if config['HPC'] == 1 and config['data'] == 'voicefixer':
         config['train_paths'] = '/beegfs/scratch/marius-s/Dataset/train_tfrecords/*.tfrecords'
         config['test_paths'] = '/beegfs/scratch/marius-s/Dataset/test_tfrecords/*.tfrecords'
         config['validation_paths'] = '/beegfs/scratch/marius-s/Dataset/valid_tfrecords/*.tfrecords'
-    else:
+        config['augmentation'] = False
+
+    elif config['HPC'] == 1 and config['data'] == 'cleanraw':
+        config['train_paths'] = '/beegfs/scratch/marius-s/Dataset_raw/train_tfrecords/*.tfrecords'
+        config['test_paths'] = '/beegfs/scratch/marius-s/Dataset_raw/test_tfrecords/*.tfrecords'
+        config['validation_paths'] = '/beegfs/scratch/marius-s/Dataset_raw/valid_tfrecords/*.tfrecords'
+        config['augmentation'] = True
+
+    elif config['HPC'] == 0 and config['data'] == 'voicefixer':
         config['train_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/train_tfrecords/*.tfrecords'
         config['test_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/test_tfrecords/*.tfrecords'
         config['validation_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/valid_tfrecords/*.tfrecords'
+        config['augmentation'] = False
 
+    elif config['HPC'] == 0 and config['data'] == 'cleanraw':
+        config['train_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/_cleanraw-produced/train_tfrecords/*.tfrecords'
+        config['test_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/_cleanraw-produced/test_tfrecords/*.tfrecords'
+        config['validation_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/_cleanraw-produced/valid_tfrecords/*.tfrecords'
+        config['augmentation'] = True
+
+
+
+    # print config
     print('------------------------------')
     print('Config:')
     print(config)
@@ -68,37 +84,45 @@ def main():
 
 
     #--------------------------------------------
+    # load train tfrecords
     path = config['train_paths']
-    train_dataset = load_and_preprocess_dataset(path, config, train_dataset=True)
+    train_dataset = load_and_preprocess_dataset(path, config, augmentation=config['augmentation'])
+    # get number of elements in dataset
+    print(f'Number of elements in train_dataset: {len([d for d in train_dataset]) * config["batch_size"]}')
+
+
+    #-----------
+    # load test tfrecords
+    path = config['test_paths']
+    test_dataset = load_and_preprocess_dataset(path, config, augmentation=False)
+    # get number of elements in dataset
+    print(f'Number of elements in test_dataset: {len([d for d in test_dataset]) * config["batch_size"]}')
+
+    #-----------
+    # load validation tfrecords
+    path = config['validation_paths']
+    valid_dataset = load_and_preprocess_dataset(path, config, augmentation=False)
+    # get number of elements in dataset
+    print(f'Number of elements in valid_dataset: {len([d for d in valid_dataset]) * config["batch_size"]}')
+
 
     # get shape of element and network input shape
     for d in train_dataset:
-        print(f'Shape of element voicefixer after batching: {d[0].shape}')
-        print(f'Shape of element produced after batching: {d[1].shape}')
+        print(f'Shape of input after batching: {d[0].shape}')
+        print(f'Shape of target after batching: {d[1].shape}')
         # get input_shape and set output_shape
         input_shape = d[0].shape[1:]
         output_shape = input_shape
         print(f'Model input_shape: {input_shape}, Model output_shape: {output_shape}')
         break
 
-    #-----------
-    # load test tfrecords
-    path = config['test_paths']
-    test_dataset = load_and_preprocess_dataset(path, config, train_dataset=False)
-
-    #-----------
-    # load validation tfrecords
-    path = config['validation_paths']
-    valid_dataset = load_and_preprocess_dataset(path, config, train_dataset=False)
 
     #--------------------------------------------
     # define callbacks
-
     # LR Scheduler
-    reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.5, patience=5, min_lr=0.0001)
+    reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.0001)
     # stop training if val_loss does not decrease
-    early_stop = keras.callbacks.EarlyStopping(monitor='loss', verbose=1, patience=15)
-    
+    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', verbose=1, patience=15)
     callbacks = [reduce_lr, early_stop]
 
     #--------------------------------------------
@@ -117,12 +141,13 @@ def main():
         model = build_model_HiFiGAN_v81(input_shape, output_shape, config)
     elif config['model'] == 811:
         model = build_model_HiFiGAN_v811(input_shape, output_shape, config)
-    elif config['model'] == 812:
-        model = build_model_HiFiGAN_v812(input_shape, output_shape, config)
 
+
+    # ---------------Training on HPC ----------------
 
     elif config['model'] == 9:
         model = build_model_CNN_v9(input_shape, output_shape, config)
+
     elif config['model'] == 10:
         # define some parameters
         config['demucs_depth'] = 5
@@ -132,32 +157,20 @@ def main():
         # get model
         model = Demucs_v1(input_shape, config)
 
-    # elif config['model'] == 9:
-    #     # define some parameters
-    #     config['demucs_depth'] = 5
-    #     config['demucs_kernel'] = 8
-    #     config['demucs_stride'] = 2
-    #     config['demucs_starting_filter'] = 8
-    #     # get model
+    elif config['model'] == 101:
+        # define some parameters
+        config['demucs_depth'] = 5
+        config['demucs_kernel'] = 64
+        config['demucs_stride'] = 2
+        config['demucs_starting_filter'] = 8
+        # get model
+        model = Demucs_v1(input_shape, config)
 
-    #     model_input = Input(shape=input_shape)
-    #     model = Demucs(model_input, config)
 
     # compile model
     model.compile(optimizer = keras.optimizers.legacy.Adam(learning_rate=config['learning_rate']),
                   loss = CustomLoss(config)
                   )
-    
-    # # GAN model
-    # if config['model'] == 6:
-    #     Gen, Mel = build_generator(input_shape, output_shape, config)
-    #     Disc = build_discriminator(Mel, output_shape, config)
-    #     model = keras.models.Sequential([Gen, Disc])
-
-    #     opti = keras.optimizers.legacy.Adam(learning_rate=config['learning_rate'])
-    #     Disc.compile(loss="binary_crossentropy", optimizer=opti)
-    #     Disc.trainable = False
-    #     model.compile(loss="binary_crossentropy", optimizer=opti)
 
     #save model name to config
     config['model_name'] = model.name 
@@ -188,7 +201,8 @@ def main():
 
     # save history
     # change type of elements in history.history to float (for json)
-    history.history['lr'] = [float(i) for i in history.history['lr']]
+    if reduce_lr in callbacks:
+        history.history['lr'] = [float(i) for i in history.history['lr']]
     with open(log_dir + '/history.json', 'w+') as fp:
         json.dump(history.history, fp, sort_keys=True, indent=4)
 
@@ -228,9 +242,6 @@ def main():
 
     # get one speechfile from dataset
     speech_for_predicition = set_1_speechfile(valid_dataset, log_dir, config)
-
-    # get shapes of speech_for_predicition
-    print('Shape of speech_for_predicition: ', speech_for_predicition.shape)
 
     # predict
     y_pred_tf = model.predict(speech_for_predicition)

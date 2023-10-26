@@ -9,11 +9,14 @@ import matplotlib.pyplot as plt
 import datetime
 import os
 import glob
+from scipy.signal import butter, filtfilt
 
 
 # autotune for performance
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
+
+# --------------------------------------------
 # decode tfrecords
 def decode_tf_records(seralized_example):
     feature_description = {
@@ -27,20 +30,63 @@ def decode_tf_records(seralized_example):
     
     return voicefixer, produced
 
+
+
+# --------------------------------------------
+# augment dataset
 # shift samples to align signals
 def shift_samples_x(x, y):
     """Shifts the samples of x (voicefixer) by 441 samples to the right to match the target y. (Voicefixer delay)"""
     x = tf.concat([tf.zeros([441,1]), x[:-441]], 0)
     return x, y
 
+def volume_change(x, y):
+    """Changes the volume of the input x by a random factor between 0.5 and 1.5."""
+    factor = tf.random.uniform([], 0.3, 1.0)
+    x = x * factor
+    return x, y
+
+def bandpass_filter(x, y):
+    """Applies a bandpass filter to the input x."""
+
+    # cast x to numpy array
+    x = np.transpose(x)
+ 
+    sr = 44100
+    order = 6
+    # get random number for lowcut and highcut
+    lowcut = np.random.uniform([], 120, 200)
+    highcut = np.random.uniform([], 7000, 8000)
+
+    # getting filter coefficients and filter audio
+    b, a = butter(order, [lowcut, highcut], fs=sr, btype='band')
+    filtered = filtfilt(b, a, x)
+    filtered = np.transpose(filtered)
+    # convert numpy array to tensor
+    x = tf.convert_to_tensor(filtered, dtype=tf.float32)
+    #x = tf.cast(filtered, tf.float32)
+
+    return x, y
+
+def bandpass_wrapper(x, y):
+    x, y = tf.py_function(func=bandpass_filter, inp=[x, y], Tout=[tf.float32, tf.float32])
+    return x, y
+
+
+def bit_reduction(x, y):
+    """Reduces the bit depth of the input x by a random factor between 0.5 and 1.5."""
+    factor = tf.random.uniform([], 0.5, 1.5)
+    x = tf.math.round(x * factor)
+    return x, y
+    
+
 # load and preprocess dataset
-def load_and_preprocess_dataset(path, config, train_dataset=bool):
+def load_and_preprocess_dataset(path, config, augmentation=bool):
     """Load and preprocess dataset from tfrecords"""
 
     paths = glob.glob(path)
-    dataset = tf.data.TFRecordDataset(paths)
+    dataset = tf.data.TFRecordDataset(paths, num_parallel_reads=AUTOTUNE)
     dataset = dataset.map(decode_tf_records, num_parallel_calls=AUTOTUNE)
-    dataset = dataset.map(shift_samples_x, num_parallel_calls=AUTOTUNE)
     
     # set number of elements in dataset from config
     if config['DS'] == None:
@@ -48,23 +94,29 @@ def load_and_preprocess_dataset(path, config, train_dataset=bool):
     else:
         dataset = dataset.take(config['DS'])
 
-    if train_dataset:
-        # count elements in train_dataset
-        print('Dataset:')
-        print(f'Number of elements in train datasets: {len([d for d in dataset])}')
+    # shift samples to align signals if voicefixer dataset
+    if config['data'] == 'voicefixer':
+        dataset = dataset.map(shift_samples_x, num_parallel_calls=AUTOTUNE)
 
+    if augmentation:
         # data augmentation
-        # sample shift
-        # waveform auf 0 setzen
         # volume change
-        # pitch shift
-        # time stretch
-        #train_dataset = train_dataset.map(lambda x, y:  ,num_parallel_calls=AUTOTUNE)
+        dataset = dataset.map(volume_change, num_parallel_calls=AUTOTUNE)
+        # bandpass filter
+        #dataset = dataset.map(bandpass_wrapper, num_parallel_calls=AUTOTUNE)
+        # bit reduction
+        # phaser
+        # set some samples to zero
 
+
+    # shuffle, batch and prefetch
     dataset = dataset.shuffle(config['shuffle_buffer_size']).batch(config['batch_size']).prefetch(buffer_size=AUTOTUNE)
+
     return dataset
 
 
+
+# --------------------------------------------
 def make_logdir():
     log_dir = "./logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     # make directory if not exist
@@ -91,7 +143,7 @@ def set_1_speechfile(dataset, log_dir, config):
     plt.figure(figsize=(8, 4))
     x = np.arange(0, len(speech_for_predicition)/int(config['sr']), 1/int(config['sr']))
     plt.plot(x, speech_for_predicition)
-    plt.title('Speechfile used for prediction (Voicefixer)')
+    plt.title('Input speechfile')
     plt.xlabel('Time in s')
     plt.ylabel('Amplitude')
     plt.savefig(log_dir + '/_audiofile_for_prediction.png')
@@ -101,13 +153,13 @@ def set_1_speechfile(dataset, log_dir, config):
     plt.figure(figsize=(8, 4))
     x = np.arange(0, len(target)/int(config['sr']), 1/int(config['sr']))
     plt.plot(x, target)
-    plt.title('target speechfile (Produced))')
+    plt.title('target speechfile (Produced)')
     plt.xlabel('Time in s')
     plt.ylabel('Amplitude')
     plt.savefig(log_dir + '/_target.png')
     plt.close()
 
-    # save voicefixer
+    # save input
     speech_tf = tf.audio.encode_wav(tf.cast(speech_for_predicition, tf.float32), int(config['sr']))
     tf.io.write_file(log_dir + '/_audiofile_for_prediction' + '.wav', speech_tf)
     # save target
@@ -130,6 +182,8 @@ def float2pcm(sig, dtype='int16'):
     offset = i.min + abs_max
     return (sig * abs_max + offset).clip(i.min, i.max).astype(dtype)
 
+
+# --------------------------------------------  
 # Custom Loss Functions
 class TFSpectralConvergence(tf.keras.layers.Layer):
     """Spectral convergence loss."""
