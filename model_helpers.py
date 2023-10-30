@@ -9,8 +9,8 @@ import numpy as np
 #--------------------------------------------
 # define GLU layer
 class GLU(tf.keras.layers.Layer):
-    def __init__(self, dim=-1, units=0):
-        super(GLU, self).__init__()
+    def __init__(self, dim=-1, units=0, **kwargs):
+        super(GLU, self).__init__(**kwargs)
         self.linear = tf.keras.layers.Dense(units) # Could be used to make Layer trainable
         self.sigmoid = tf.keras.layers.Dense(units, activation="sigmoid")
         self._dim = dim
@@ -28,17 +28,18 @@ class GLU(tf.keras.layers.Layer):
         })
         return config
 
-def demucs_encoder_block(x, filters, kernel_size):
-    x = Conv1D(filters=filters, kernel_size=kernel_size, activation=None, padding='same')(x)
+
+def demucs_encoder_block(x, filters, kernel_size, stride):
+    x = Conv1D(filters=filters, kernel_size=kernel_size, strides=stride, padding='same', activation=None)(x)
     x = keras.layers.Activation('relu')(x)
-    x = Conv1D(filters=filters * 2, kernel_size=1, activation=None, padding='same')(x)
+    x = Conv1D(filters=filters * 2, kernel_size=1, strides=1, activation=None)(x)
     x = GLU()(x)
     return x
 
-def demucs_decoder_block(x, filters, kernel_size, transpose_filters, with_activation: bool):
-    x = Conv1D(filters=filters * 2, kernel_size=1, activation=None, padding='same')(x)
+def demucs_decoder_block(x, filters, kernel_size, stride, transpose_filters, with_activation: bool):
+    x = Conv1D(filters=filters * 2, kernel_size=1, strides=1, activation=None)(x)
     x = GLU()(x)
-    x = Conv1DTranspose(filters=transpose_filters, kernel_size=kernel_size, padding='same')(x)
+    x = Conv1DTranspose(filters=transpose_filters, kernel_size=kernel_size, padding='same', strides=stride)(x)
 
     if with_activation == True:
         x = keras.layers.Activation('relu')(x)
@@ -61,12 +62,13 @@ def length_padded(length, config):
     """
     length = np.ceil(length * 1)
     for idx in range(config['demucs_depth']):
-        length = np.ceil((length - config['demucs_kernel']) / config['demucs_stride']) + 1
+        length = np.ceil((length - config['demucs_kernel']) / config['demucs_stride']) +1
         length = max(length, 1)
     for idx in range(config['demucs_depth']):
         length = (length - 1) * config['demucs_stride'] + config['demucs_kernel']
     length = int(np.ceil(length / 1))
     return int(length)
+
 
 
 
@@ -81,20 +83,20 @@ def build_generator(input_shape, output_shape, config):
     Input_Gen = keras.Input(input_shape)
 
     # Generator - Encoder 
-    conv1 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(Input_Gen)
-    conv2 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(conv1)
-    conv3 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(conv2)
-    conv4 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(conv3)
+    conv1 = Conv1D(filters=128, kernel_size=32, activation='tanh', strides=2)(Input_Gen)
+    conv2 = Conv1D(filters=128, kernel_size=32, activation='tanh', strides=2)(conv1)
+    conv3 = Conv1D(filters=128, kernel_size=32, activation='tanh', strides=2)(conv2)
+    conv4 = Conv1D(filters=128, kernel_size=32, activation='tanh', strides=2)(conv3)
 
     # Generator - Decoder with skip connections
     # transpose convolutions
-    up1 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2)(conv4))
+    up1 = Conv1D(filters=128, kernel_size=32, activation='tanh', strides=2)(UpSampling1D(size=2)(conv4))
     merge1 = concatenate([up1, conv3], axis=-1)
-    up2 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2)(merge1))
+    up2 = Conv1D(filters=128, kernel_size=32, activation='tanh', strides=2)(UpSampling1D(size=2)(merge1))
     merge2 = concatenate([up2, conv2], axis=-1)
-    up3 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2)(merge2))
+    up3 = Conv1D(filters=128, kernel_size=32, activation='tanh', strides=2)(UpSampling1D(size=2)(merge2))
     merge3 = concatenate([up3, conv1], axis=-1)
-    up4 = Conv1D(filters=128, kernel_size=32, padding='same', activation='tanh', strides=2)(UpSampling1D(size=2)(merge3))
+    up4 = Conv1D(filters=128, kernel_size=32, activation='tanh', strides=2)(UpSampling1D(size=2)(merge3))
     
     # Generator - Output
     model = Dense(output_shape[1], activation='tanh')(up4)

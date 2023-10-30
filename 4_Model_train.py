@@ -31,22 +31,25 @@ def main():
 
     # get arguments from command line
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--n_epochs', type=int, default=20)
-    parser.add_argument('--learning_rate', type=float, default=0.001)
+    parser.add_argument('--learning_rate', type=float, default=0.002)
     parser.add_argument('--DS', type=int, default=None, help='Number of elements in dataset. If None, then all elements are used.')
-    parser.add_argument('--HPC', type=int, default=0, help='If 1, then run on HPC.')
+    parser.add_argument('--HPC', type=int, default=0, choices=[0, 1], help='If 1, then run on HPC.')
     parser.add_argument('--model', type=int, default=0)
     parser.add_argument('--loss_func', type=str, default='stft')
-    parser.add_argument('--data', type=str, default='voicefixer')
+    parser.add_argument('--data', type=str, default='voicefixer', choices=['voicefixer', 'cleanraw'])
+    parser.add_argument('--sr', type=int, default=44100, choices=[44100, 22050])
     args = parser.parse_args()
     
     # get args to config-dict
     config = vars(args)
     
     # add values to config
-    config['shuffle_buffer_size'] = 4500
-    config['sr'] = 44100
+    if config['DS'] == None:
+        config['shuffle_buffer_size'] = 50000
+    else:
+        config['shuffle_buffer_size'] = config['DS']
     config['shift_samples'] = int((441/44100) * config['sr']) # 441 samples bei 44100 Hz
 
     # set paths to tfrecords
@@ -111,11 +114,16 @@ def main():
         print(f'Shape of input after batching: {d[0].shape}')
         print(f'Shape of target after batching: {d[1].shape}')
         # get input_shape and set output_shape
+        # input_shape = (131072, 1) #2**17
+        # input_shape = tf.constant(input_shape)
+        print(f'Input type of data: {type(d[0])}')     
         input_shape = d[0].shape[1:]
         output_shape = input_shape
+        # print shapes
         print(f'Model input_shape: {input_shape}, Model output_shape: {output_shape}')
         break
 
+        
 
     #--------------------------------------------
     # define callbacks
@@ -143,16 +151,18 @@ def main():
         model = build_model_HiFiGAN_v811(input_shape, output_shape, config)
 
 
-    # ---------------Training on HPC ----------------
+    # --------------- training on HPC ----------------
 
     elif config['model'] == 9:
         model = build_model_CNN_v9(input_shape, output_shape, config)
+    elif config['model'] == 91:
+        model = build_model_CNN_v91(input_shape, output_shape, config)
 
     elif config['model'] == 10:
         # define some parameters
         config['demucs_depth'] = 5
         config['demucs_kernel'] = 8
-        config['demucs_stride'] = 2
+        config['demucs_stride'] = 1
         config['demucs_starting_filter'] = 8
         # get model
         model = Demucs_v1(input_shape, config)
@@ -160,12 +170,27 @@ def main():
     elif config['model'] == 101:
         # define some parameters
         config['demucs_depth'] = 5
-        config['demucs_kernel'] = 64
-        config['demucs_stride'] = 2
+        config['demucs_kernel'] = 16
+        config['demucs_stride'] = 1
         config['demucs_starting_filter'] = 8
         # get model
         model = Demucs_v1(input_shape, config)
 
+    # ---------------future training on HPC ----------------
+
+    elif config['model'] == 102:
+        # define some parameters
+        config['demucs_depth'] = 5
+        config['demucs_kernel'] = 8
+        config['demucs_stride'] = 2
+        config['demucs_starting_filter'] = 8
+        # get model
+        model = Demucs_strided(input_shape, config)
+
+
+
+
+    #-----------------------------------
 
     # compile model
     model.compile(optimizer = keras.optimizers.legacy.Adam(learning_rate=config['learning_rate']),
@@ -178,8 +203,10 @@ def main():
     # print model summary
     print('------------------------------')
     model.summary()   
+    
 
     #-----------------------------------
+
 
     # start timer
     start = datetime.datetime.now()
@@ -222,7 +249,7 @@ def main():
     eval_loss = history.history['val_loss']
     
     # plot loss and accuracy in one figure
-    fig1 = plt.figure()
+    plt.figure()
     plt.plot(range(len(train_loss)), train_loss, label='train_loss')
     plt.plot(range(len(eval_loss)), eval_loss, label='eval_loss')
     
@@ -242,6 +269,10 @@ def main():
 
     # get one speechfile from dataset
     speech_for_predicition = set_1_speechfile(valid_dataset, log_dir, config)
+
+    # resample if necessary
+    if config['sr'] != 44100:
+        speech_for_predicition = librosa.resample(speech_for_predicition, orig_sr=44100, target_sr=22050)
 
     # predict
     y_pred_tf = model.predict(speech_for_predicition)

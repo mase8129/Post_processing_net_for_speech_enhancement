@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH -o ./jobs/%j.out            # Output-File
-#SBATCH -J demucs_clean_kernel64_stft	                                                # Job Name
+#SBATCH -o ./jobs/1030_v101_mix3.%j.out            # Output-File
+#SBATCH -J v101_mix3_22050	                                                # Job Name
 #SBATCH --ntasks=1 			                                        # Anzahl Prozesse P 
 #SBATCH --cpus-per-task=12       	                     	        # Anzahl CPU-Cores pro Prozess P
 #SBATCH --gres=gpu:1                    	        	           # N GPUs anfordern
-#SBATCH --time=60:00:00                         	                # estimated time
+#SBATCH --time=7-00:00:00                         	                # estimated time
 #SBATCH --partition=gpu						                        # which partition to run on
 #SBATCH --mem=150G				                                    # XGiB resident memory pro node
 #SBATCH --mail-type=ALL
@@ -22,4 +22,4 @@ module list
 # check GPU allocation
 nvidia-smi -L 
 # run python script with args
-python3 ./4_Model_train.py --n_epochs=50 --HPC=1 --model=101 --loss_func=mix --data=cleanraw --batch_size=4
+python3 ./4_Model_train.py --n_epochs=30 --HPC=1 --model=101 --DS=5000 --loss_func=mix3 --batch_size=4 --data=voicefixer --sr=22050

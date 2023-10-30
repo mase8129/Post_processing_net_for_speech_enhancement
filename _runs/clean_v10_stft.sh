@@ -22,4 +22,4 @@ module list
 # check GPU allocation
 nvidia-smi -L 
 # run python script with args
-python3 ./4_Model_train.py --n_epochs=100 --HPC=1 --model=10 --loss_func=stft --data=cleanraw
+python3 ./4_Model_train.py --n_epochs=50 --HPC=1 --model=10 --loss_func=stft --data=cleanraw --batch_size=4

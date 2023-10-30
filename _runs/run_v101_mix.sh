@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1 			                                        # Anzahl Prozesse P 
 #SBATCH --cpus-per-task=12       	                     	        # Anzahl CPU-Cores pro Prozess P
 #SBATCH --gres=gpu:a100:1                    	        	           # N GPUs anfordern
-#SBATCH --time=50:00:00                         	                # estimated time
+#SBATCH --time=7-00:00:00                         	                # estimated time
 #SBATCH --partition=gpu						                        # which partition to run on
 #SBATCH --mem=150G				                                    # XGiB resident memory pro node
 #SBATCH --mail-type=ALL

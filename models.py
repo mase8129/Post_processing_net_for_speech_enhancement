@@ -910,19 +910,19 @@ def Demucs_v1(input_shape, config):
     input = Input(shape = input_shape)
 
     # Encoder path
-    x = demucs_encoder_block(input, filters=starting_filter * 2**0, kernel_size=kernel)
+    x = demucs_encoder_block(input, filters=starting_filter * 2**0, kernel_size=kernel, stride=stride)
     skip_connections.append(x)
 
-    x = demucs_encoder_block(x, filters=starting_filter * 2**1, kernel_size=kernel)
+    x = demucs_encoder_block(x, filters=starting_filter * 2**1, kernel_size=kernel, stride=stride)
     skip_connections.append(x)
 
-    x = demucs_encoder_block(x, filters=starting_filter * 2**2, kernel_size=kernel)
+    x = demucs_encoder_block(x, filters=starting_filter * 2**2, kernel_size=kernel, stride=stride)
     skip_connections.append(x)
 
-    x = demucs_encoder_block(x, filters=starting_filter * 2**3, kernel_size=kernel)
+    x = demucs_encoder_block(x, filters=starting_filter * 2**3, kernel_size=kernel, stride=stride)
     skip_connections.append(x)
 
-    x = demucs_encoder_block(x, filters=starting_filter * 2**4, kernel_size=kernel)
+    x = demucs_encoder_block(x, filters=starting_filter * 2**4, kernel_size=kernel, stride=stride)
     skip_connections.append(x)
 
     # BLSTM Bottleneck
@@ -934,6 +934,7 @@ def Demucs_v1(input_shape, config):
     x = demucs_decoder_block(x,
                              filters=starting_filter * 2**4,
                              kernel_size=kernel, 
+                             stride=stride,
                              with_activation=True,
                              transpose_filters=starting_filter * 2**3)
 
@@ -942,6 +943,7 @@ def Demucs_v1(input_shape, config):
     x = demucs_decoder_block(x,
                              filters=starting_filter * 2**3,
                              kernel_size=kernel,
+                             stride=stride,
                              with_activation=True,
                              transpose_filters=starting_filter * 2**2)
 
@@ -950,6 +952,7 @@ def Demucs_v1(input_shape, config):
     x = demucs_decoder_block(x,
                              filters=starting_filter * 2**2,
                              kernel_size=kernel,
+                             stride=stride,
                              with_activation=True,
                              transpose_filters=starting_filter * 2**1)
 
@@ -958,6 +961,7 @@ def Demucs_v1(input_shape, config):
     x = demucs_decoder_block(x,
                              filters=starting_filter * 2**1,
                              kernel_size=kernel,
+                             stride=stride,
                              with_activation=True,
                              transpose_filters=starting_filter * 2**0)
 
@@ -966,6 +970,7 @@ def Demucs_v1(input_shape, config):
     x = demucs_decoder_block(x,
                              filters=starting_filter *  2**0,
                              kernel_size=kernel,
+                             stride=stride,
                              with_activation=False,
                              transpose_filters=1)
 
@@ -1048,9 +1053,188 @@ def build_model_CNN_v9(input_shape, output_shape, config):
     return model
 
 
+def build_model_CNN_v91(input_shape, output_shape, config):
+    """CNN model with 128 filters and 32 kernel size
+    with one skip connection"""
+
+    # add skip connections from input to output
+    # input layer # (Batchsize, 132300, 1)
+    input_layer = Input(shape=input_shape, name='input_layer')
+
+    filter_size = 128
+
+    # add 12 1d conv layers with skip connections - encoder -decoder structure  
+
+    # encoder
+    conv1 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(input_layer)
+    conv1 = BatchNormalization()(conv1)
+
+    conv2 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv1)
+    conv2 = BatchNormalization()(conv2)
+
+    conv3 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv2)
+    conv3 = BatchNormalization()(conv3)
+
+    conv4 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv3)
+    conv4 = BatchNormalization()(conv4)
+
+    conv5 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv4)
+    conv5 = BatchNormalization()(conv5)
+
+    conv6 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv5)
+    conv6 = BatchNormalization()(conv6)
+
+    # decoder
+    conv7 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv6)
+    conv7 = BatchNormalization()(conv7)
+    #skip connection
+
+    conv8 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv7)
+    conv8 = BatchNormalization()(conv8)
+    #skip connection
+
+    conv9 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv8)
+    conv9 = BatchNormalization()(conv9)
+    #skip connection
+
+    conv10 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv9)
+    conv10 = BatchNormalization()(conv10)
+    #skip connection
+
+    conv11 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv10)
+    conv11 = BatchNormalization()(conv11)
+    #skip connection
+
+    conv12 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv11)
+    conv12 = BatchNormalization()(conv12)
+    #skip connection
+    conv12 = Add()([conv1, conv12])
+
+    # output layer
+    output_layer = Dense(1)(conv12)
+    # batch normalization
+    output_layer = BatchNormalization()(output_layer)
+
+    # get model
+    model = Model(inputs=input_layer, outputs=output_layer, name='CNN_v91')
+    # get model output shape
+    print(f'model output shape: {model.output_shape}')
+
+    return model
+
 # --------------------- Improving the models --------------------------
 
 
+def Demucs_strided(input_shape, config):
+    '''
+    v102 
+    Implementation of Demucs Unet, adjusted for speech enhancement
+    
+    References
+    ----------
+    [1] Alexandre Defossez, Gabriel Synnaeve, Yossi Adi (2020). Real Time Speech Enhancement in the Waveform Domain.
+        Interspeech 2020. https://doi.org/10.48550/arXiv.2006.12847
+    
+    [2] Reference Implementation: https://github.com/facebookresearch/denoiser/tree/8f006f4c492b24bcbf8b3df33b9d38520c908c55  
+    '''
+
+    kernel = config['demucs_kernel']
+    stride = config['demucs_stride']
+    depth = config['demucs_depth']
+    starting_filter = config['demucs_starting_filter']
+
+    # Define list for skip connections
+    skip_connections = []
+    
+    # input layer
+    input = Input(shape = input_shape, name='input_layer')
+
+    # Original length
+    orig_length = input_shape[0]
+
+    # Padding so for all layers, size of the input - kernel_size % stride = 0
+    valid_length = length_padded(orig_length, config)
+    pad_len = int (valid_length - orig_length)
+    padding = tf.constant([[0, 0], [0, pad_len], [0, 0]])
+    input = tf.pad(input, paddings=padding)
+
+    # Encoder path
+    x = demucs_encoder_block(input, filters=starting_filter * 2**0, kernel_size=kernel, stride=stride)
+    skip_connections.append(x)
+
+    x = demucs_encoder_block(x, filters=starting_filter * 2**1, kernel_size=kernel, stride=stride)
+    skip_connections.append(x)
+
+    x = demucs_encoder_block(x, filters=starting_filter * 2**2, kernel_size=kernel, stride=stride)
+    skip_connections.append(x)
+
+    x = demucs_encoder_block(x, filters=starting_filter * 2**3, kernel_size=kernel, stride=stride)
+    skip_connections.append(x)
+
+    x = demucs_encoder_block(x, filters=starting_filter * 2**4, kernel_size=kernel, stride=stride)
+    skip_connections.append(x)
+
+
+    # BLSTM Bottleneck
+    x = demucs_blstm(x, starting_filter * 2**4)
+
+
+    # Decoder Path
+    skip = skip_connections.pop(-1)
+    #x = x + skip[:, 0:x.shape[1], :]
+    x = Add()([x, skip[:, :x.shape[1], :]])
+    #x = Add()([x, skip])
+    x = demucs_decoder_block(x,
+                             filters=starting_filter * 2**4,
+                             kernel_size=kernel, 
+                             stride=stride,
+                             with_activation=True,
+                             transpose_filters=starting_filter * 2**3)
+
+    skip = skip_connections.pop(-1)
+    #x = x + skip[:, 0:x.shape[1], :]
+    x = Add()([x, skip[:, :x.shape[1], :]])
+    x = demucs_decoder_block(x,
+                             filters=starting_filter * 2**3,
+                             kernel_size=kernel,
+                             stride=stride,
+                             with_activation=True,
+                             transpose_filters=starting_filter * 2**2)
+
+    skip = skip_connections.pop(-1)
+    #x = x + skip[:, 0:x.shape[1], :]
+    x = Add()([x, skip[:, :x.shape[1], :]])
+    x = demucs_decoder_block(x,
+                             filters=starting_filter * 2**2,
+                             kernel_size=kernel,
+                             stride=stride,
+                             with_activation=True,
+                             transpose_filters=starting_filter * 2**1)
+
+    skip = skip_connections.pop(-1)
+    #x = x + skip[:, 0:x.shape[1], :]
+    x = Add()([x, skip[:, :x.shape[1], :]])
+    x = demucs_decoder_block(x,
+                             filters=starting_filter * 2**1,
+                             kernel_size=kernel,
+                             stride=stride,
+                             with_activation=True,
+                             transpose_filters=starting_filter * 2**0)
+
+    skip = skip_connections.pop(-1)
+    #x = x + skip[:, 0:x.shape[1], :]
+    x = Add()([x, skip[:, :x.shape[1], :]])
+    x = demucs_decoder_block(x,
+                             filters=starting_filter *  2**0,
+                             kernel_size=kernel,
+                             stride=stride,
+                             with_activation=False,
+                             transpose_filters=1)
+    
+    x = x[:, :orig_length, :]
+
+    model = Model(inputs=input, outputs=x, name='Demucs_strided')
+    return model
 
 
 
