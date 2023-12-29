@@ -34,7 +34,7 @@ def decode_tf_records(seralized_example):
 
 
 # --------------------------------------------
-# augment cleanraw-dataset
+# augment funcs
 
 def volume_change(x, y):
     """Changes the volume of the input x by a random factor between 0.3 and 1.0."""
@@ -58,6 +58,7 @@ def roll(x, y):
     num_samples = tf.random.uniform([], 0, 400, dtype=tf.int32)
     # roll
     x = tf.roll(x, num_samples, axis=0)
+    y = tf.roll(y, num_samples, axis=0)
     return x, y
 
 def bandpass_filter(x, y):
@@ -88,13 +89,6 @@ def bandpass_wrapper(x, y):
     # x.set_shape([132300, 1])
     # y.set_shape([132300, 1])
     return x, y
-
-
-# def bit_reduction(x, y):
-#     """Reduces the bit depth of the input x by a random factor between 0.5 and 1.5."""
-#     factor = tf.random.uniform([], 0.5, 1.5)
-#     x = tf.math.round(x * factor)
-#     return x, y
 
 
 
@@ -180,7 +174,7 @@ def take_1s_44100(x, y):
 
 
 # load and preprocess dataset
-def load_and_preprocess_dataset(path, config, augmentation=bool) -> tf.data.Dataset:
+def load_and_preprocess_dataset(path, config, dset) -> tf.data.Dataset:
     """Load and preprocess dataset from tfrecords
        
      Args:
@@ -190,59 +184,54 @@ def load_and_preprocess_dataset(path, config, augmentation=bool) -> tf.data.Data
         
     Returns:
         tf.data.Dataset: Dataset."""
+    
+    AUTOTUNE = tf.data.experimental.AUTOTUNE
 
     paths = glob.glob(path)
     dataset = tf.data.TFRecordDataset(paths, num_parallel_reads=AUTOTUNE)
     dataset = dataset.map(decode_tf_records, num_parallel_calls=AUTOTUNE)
 
-    # set number of elements in dataset from config
-    if config['DS'] == None:
+    # set number of elements in different datasets from config
+    if config['DS'] == None and dset == 'train':
         dataset = dataset
-    else:
+    elif config['DS'] == None and dset == 'test':
+        dataset = dataset
+    elif config['DS'] == None and dset == 'valid':
+        dataset = dataset.take(10)
+
+    elif config['DS'] != None and dset == 'train':
         dataset = dataset.take(config['DS'])
+    elif config['DS'] != None and dset == 'test':
+        dataset = dataset.take(np.ceil(config['DS']/10))
+    elif config['DS'] != None and dset == 'valid':
+        dataset = dataset.take(10)
 
 
     # resample if samplerate is not 22050
     if config['sr'] == 44100:
         # take only 1s of audio
-        dataset = dataset.map(take_1s_44100, num_parallel_calls=AUTOTUNE)
-        if config['data'] == 'voicefixer':
-            # shift samples to align signals if voicefixer dataset
-            dataset = dataset.map(shift_samples_44100, num_parallel_calls=AUTOTUNE)
+        dataset = dataset.map(take_1s_44100, num_parallel_calls=AUTOTUNE, deterministic=False)
+        # shift samples to align signals if voicefixer dataset
+        dataset = dataset.map(shift_samples_44100, num_parallel_calls=AUTOTUNE, deterministic=False)
     elif config['sr'] == 22050:
         # convert samplerate to 22050
-        dataset = dataset.map(resample_wrapper, num_parallel_calls=AUTOTUNE)
+        dataset = dataset.map(resample_wrapper, num_parallel_calls=AUTOTUNE, deterministic=False)
         # take only 1s of audio
-        dataset = dataset.map(take_1s_22050, num_parallel_calls=AUTOTUNE)
-        if config['data'] == 'voicefixer':
-            # shift samples to align signals if voicefixer dataset
-            dataset = dataset.map(shift_samples_22050, num_parallel_calls=AUTOTUNE)
-
-
-    # data augmentation - only with data=cleanraw
-    if augmentation == True:
-        # volume change
-        dataset = dataset.map(volume_change, num_parallel_calls=AUTOTUNE)
-        # sample to zero
-        dataset = dataset.map(samples_to_zero, num_parallel_calls=AUTOTUNE)
-        # roll
-        dataset = dataset.map(roll, num_parallel_calls=AUTOTUNE)
-        # bandpass filter
-        dataset = dataset.map(bandpass_wrapper, num_parallel_calls=AUTOTUNE)
-        # bit reduction
-        # phaser
+        dataset = dataset.map(take_1s_22050, num_parallel_calls=AUTOTUNE, deterministic=False)
+        # shift samples to align signals if voicefixer dataset
+        dataset = dataset.map(shift_samples_22050, num_parallel_calls=AUTOTUNE, deterministic=False)
         
 
     # shuffle, batch and prefetch
-    dataset = dataset.shuffle(config['shuffle_buffer_size']).batch(config['batch_size']).prefetch(buffer_size=AUTOTUNE)
+    dataset = dataset.shuffle(config['shuffle_buffer_size']).batch(config['batch_size']).prefetch(buffer_size=1)
 
     return dataset
 
 
 
 # --------------------------------------------
-def make_logdir():
-    log_dir = "./_logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+def make_logdir(config):
+    log_dir = './logs/'+ datetime.datetime.now().strftime("%Y%m%d-%H%M%S")+'_'+config['model_name']+'_'+config['loss_func']+'_'+str(config['n_epochs'])+'ep_'+str(config['sr'])+'_ds'+str(config['DS'])+'/'
     # make directory if not exist
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -259,7 +248,7 @@ def set_1_speechfile(dataset, log_dir, config):
         config (dict): Config.
     
     Returns:
-        Tensor: Input speechfile.
+        numpy array: input speechfile.
     """
 
     dataset = dataset.unbatch().as_numpy_iterator()
@@ -272,6 +261,12 @@ def set_1_speechfile(dataset, log_dir, config):
 
     speech_for_predicition = speech_for_predicition[0]
     target = target[0]
+
+    # resample if samplerate is 22050Hz
+    if config['sr'] == 22050:
+        # resample to 22050
+        speech_for_predicition = librosa.resample(speech_for_predicition, orig_sr=44100, target_sr=22050)
+        target = librosa.resample(target, orig_sr=44100, target_sr=22050)
     
     # plot input
     plt.figure(figsize=(8, 4))
@@ -301,6 +296,86 @@ def set_1_speechfile(dataset, log_dir, config):
     tf.io.write_file(log_dir + '/_target' + '.wav', target_tf)
 
     return speech_for_predicition
+
+
+
+# get audiofile from dataset and use as input for prediction
+def pred_plot_save(dataset, model, log_dir, config):
+    """Get audiofile from dataset and use as input for prediction
+   
+     Args:
+        dataset (tf.data.Dataset): Dataset.
+        model (tf.keras.Model): Model.
+        log_dir (str): Path to log directory.
+        config (dict): Config.
+
+    """
+    # get audios
+    dataset = dataset.unbatch().as_numpy_iterator()
+    for d in dataset:
+        input = d[0]
+        target = d[1]
+        # get types and shapes ()
+        print('input shape: ', input.shape, input.dtype)
+        print('target shape: ', target.shape, target.dtype)
+        break
+
+    # predict - returns numpy array - (data, channels, 1)
+    pred = model.predict(input)
+    pred = np.squeeze(pred, axis=-1)        
+    print('pred shape: ', pred.shape, pred.dtype)
+
+    
+    x = np.arange(0, (pred.shape[0])/int(config['sr']), 1/int(config['sr']))
+    # plot waveforms
+    plt.plot(x, np.squeeze(input), label="input")
+    plt.plot(x, np.squeeze(target), label="target", alpha=0.5)
+    plt.plot(x, np.squeeze(pred), label="pred", alpha=0.5)
+    plt.legend(loc="upper left")
+    plt.xlabel("time [s]")
+    plt.ylabel("amplitude")
+    #plt.xlim(0, 0.)
+    plt.title(config['model_name'] + ' - ' + config['loss_func'] + ' - ' + str(config['n_epochs']) + ' epochs')
+    plt.savefig(log_dir + '/__plot_wav.png')
+    plt.close()
+
+
+    # plot specs
+    # calculate stft
+    input_stft = librosa.stft(y=np.squeeze(input), n_fft=2048, hop_length=120, win_length=2048)
+    target_stft = librosa.stft(y=np.squeeze(target), n_fft=2048, hop_length=120, win_length=2048)
+    pred_stft = librosa.stft(y=np.squeeze(pred), n_fft=2048, hop_length=120, win_length=2048)
+
+    # convert to db
+    input_db = librosa.amplitude_to_db(np.abs(input_stft), ref=np.max)
+    target_db = librosa.amplitude_to_db(np.abs(target_stft), ref=np.max)
+    pred_db = librosa.amplitude_to_db(np.abs(pred_stft), ref=np.max)
+
+    # plot three stfts
+    fig, ax = plt.subplots(nrows=3, ncols=1, sharex=True, figsize=(10,8))
+    img1 = librosa.display.specshow(input_db, x_axis='time', y_axis='log', ax=ax[0])
+    ax[0].set(title='input')
+
+    img2 = librosa.display.specshow(target_db, x_axis='time', y_axis='log', ax=ax[1])
+    ax[1].set(title='target')
+
+    img3 = librosa.display.specshow(pred_db, x_axis='time', y_axis='log', ax=ax[2])
+    ax[2].set(title='predict')
+
+    # To eliminate redundant axis labels, we'll use "label_outer" on all subplots:
+    for ax_i in ax:
+        ax_i.label_outer()
+
+    # And we can share colorbars:
+    fig.colorbar(img1, ax=[ax[0], ax[1], ax[2]])
+    plt.savefig(log_dir + '/__plot_stft.png')
+    plt.close()
+
+    # save audio files
+    tf.io.write_file(log_dir+'/_input.wav', tf.audio.encode_wav(tf.cast(input, dtype=tf.float32), config['sr']))  
+    tf.io.write_file(log_dir+'/_target.wav', tf.audio.encode_wav(tf.cast(target, dtype=tf.float32), config['sr']))
+    tf.io.write_file(log_dir+'/_pred.wav', tf.audio.encode_wav(tf.cast(pred, dtype=tf.float32), config['sr']))
+
 
 
 
@@ -461,7 +536,7 @@ class TFMultiResolutionSTFT(tf.keras.layers.Layer):
         sc_loss /= len(self.stft_losses)
         mag_loss /= len(self.stft_losses)
 
-        return mag_loss
+        return sc_loss, mag_loss
         #return sc_loss, mag_loss
     
 class CustomLoss(tf.keras.losses.Loss):
@@ -479,17 +554,26 @@ class CustomLoss(tf.keras.losses.Loss):
 
         # define the loss functions
         mae = self.mae(y_true, y_pred) # l1 loss
-        stft = self.stft(y_true, y_pred) # multi resolution stft loss
+        mse = self.mse(y_true, y_pred) # l2 loss
+        sc, mag = self.stft(y_true, y_pred) 
+        MRstft = sc + mag # multi resolution stft loss
 
         if self.config['loss_func'] == 'stft':
-            return (stft)
+            return (MRstft)
+        elif self.config['loss_func'] == 'mae':
+            return mae
+        elif self.config['loss_func'] == 'mse':
+            return mse
+        # mix losses
         elif self.config['loss_func'] == 'mix1':
-            return (stft + (mae/2))
+            return (MRstft + (mae/2))
+        # mix2 beste
         elif self.config['loss_func'] == 'mix2':
-            return (stft + (mae))
+            return (MRstft + (mae))
         elif self.config['loss_func'] == 'mix3':
-            return ((stft/2) + (mae))
+            return ((MRstft/2) + (mae))
         elif self.config['loss_func'] == 'mix4':
-            return ((stft/4) + (mae))
+            return ((MRstft/3) + (mae))
+
 
 

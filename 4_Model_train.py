@@ -16,6 +16,8 @@ import datetime
 import argparse
 from helpers import *
 from models import *
+import librosa.display
+import librosa
 
 
 # AUTOTUNE for performance
@@ -32,14 +34,14 @@ def main():
     # get arguments from command line
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--n_epochs', type=int, default=20)
-    parser.add_argument('--learning_rate', type=float, default=0.002)
+    parser.add_argument('--n_epochs', type=int, default=50)
+    parser.add_argument('--learning_rate', type=float, default=0.001)
     parser.add_argument('--DS', type=int, default=None, help='Number of elements in dataset. If None, then all elements are used.')
     parser.add_argument('--HPC', type=int, default=0, choices=[0, 1], help='If 1, then run on HPC.')
-    parser.add_argument('--model', type=int, default=0)
-    parser.add_argument('--loss_func', type=str, default='stft')
-    parser.add_argument('--data', type=str, default='voicefixer', choices=['voicefixer', 'cleanraw'])
-    parser.add_argument('--sr', type=int, default=44100, choices=[44100, 22050])
+    parser.add_argument('--loss_func', type=str, default='mix2')
+    parser.add_argument('--kernel', type=int, default=16, choices=[16, 32])
+    parser.add_argument('--sr', type=int, default=22050, choices=[44100, 22050])
+    parser.add_argument('--act_output', type=int, default=0)
     args = parser.parse_args()
     
     # get args to config-dict
@@ -47,35 +49,20 @@ def main():
     
     # add values to config
     if config['DS'] == None:
-        config['shuffle_buffer_size'] = 50000
+        config['shuffle_buffer_size'] = 25000
     else:
         config['shuffle_buffer_size'] = config['DS']
-    config['shift_samples'] = int((441/44100) * config['sr']) # 441 samples bei 44100 Hz
 
     # set paths to tfrecords
-    if config['HPC'] == 1 and config['data'] == 'voicefixer':
+    if config['HPC'] == 1:
         config['train_paths'] = '/beegfs/scratch/marius-s/Dataset/train_tfrecords/*.tfrecords'
         config['test_paths'] = '/beegfs/scratch/marius-s/Dataset/test_tfrecords/*.tfrecords'
         config['validation_paths'] = '/beegfs/scratch/marius-s/Dataset/valid_tfrecords/*.tfrecords'
-        config['augmentation'] = False
 
-    elif config['HPC'] == 1 and config['data'] == 'cleanraw':
-        config['train_paths'] = '/beegfs/scratch/marius-s/Dataset_raw/train_tfrecords/*.tfrecords'
-        config['test_paths'] = '/beegfs/scratch/marius-s/Dataset_raw/test_tfrecords/*.tfrecords'
-        config['validation_paths'] = '/beegfs/scratch/marius-s/Dataset_raw/valid_tfrecords/*.tfrecords'
-        config['augmentation'] = True
-
-    elif config['HPC'] == 0 and config['data'] == 'voicefixer':
+    elif config['HPC'] == 0:
         config['train_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/train_tfrecords/*.tfrecords'
         config['test_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/test_tfrecords/*.tfrecords'
         config['validation_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/valid_tfrecords/*.tfrecords'
-        config['augmentation'] = False
-
-    elif config['HPC'] == 0 and config['data'] == 'cleanraw':
-        config['train_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/_cleanraw-produced/train_tfrecords/*.tfrecords'
-        config['test_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/_cleanraw-produced/test_tfrecords/*.tfrecords'
-        config['validation_paths'] = '/Users/marius/Documents/Uni/TU_Berlin_Master/Masterarbeit/Dataset/_cleanraw-produced/valid_tfrecords/*.tfrecords'
-        config['augmentation'] = True
 
 
 
@@ -89,7 +76,7 @@ def main():
     #--------------------------------------------
     # load train tfrecords
     path = config['train_paths']
-    train_dataset = load_and_preprocess_dataset(path, config, augmentation=config['augmentation'])
+    train_dataset = load_and_preprocess_dataset(path, config, dset='train')
     # get number of elements in dataset
     print(f'Number of elements in train_dataset: {len([d for d in train_dataset]) * config["batch_size"]}')
 
@@ -97,14 +84,14 @@ def main():
     #-----------
     # load test tfrecords
     path = config['test_paths']
-    test_dataset = load_and_preprocess_dataset(path, config, augmentation=False)
+    test_dataset = load_and_preprocess_dataset(path, config, dset='test')
     # get number of elements in dataset
     print(f'Number of elements in test_dataset: {len([d for d in test_dataset]) * config["batch_size"]}')
 
     #-----------
     # load validation tfrecords
     path = config['validation_paths']
-    valid_dataset = load_and_preprocess_dataset(path, config, augmentation=False)
+    valid_dataset = load_and_preprocess_dataset(path, config, dset='valid')
     # get number of elements in dataset
     print(f'Number of elements in valid_dataset: {len([d for d in valid_dataset]) * config["batch_size"]}')
 
@@ -114,8 +101,6 @@ def main():
         print(f'Shape of input after batching: {d[0].shape}')
         print(f'Shape of target after batching: {d[1].shape}')
         # get input_shape and set output_shape
-        # input_shape = (131072, 1) #2**17
-        # input_shape = tf.constant(input_shape)
         print(f'Input type of data: {type(d[0])}')     
         input_shape = d[0].shape[1:]
         output_shape = input_shape
@@ -124,78 +109,30 @@ def main():
         break
 
         
-
     #--------------------------------------------
     # define callbacks
     # LR Scheduler
-    reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.0001)
+    reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.5, patience=15, min_lr=0.0001)
     # stop training if val_loss does not decrease
-    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', verbose=1, patience=15)
-    callbacks = [reduce_lr, early_stop]
+    #early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', verbose=1, patience=15)
+    callbacks = [reduce_lr]
 
     #--------------------------------------------
+
+    # set some parameters for model
+    config['padding'] = 'causal'
+    config['activation_func'] = 'tanh'
+    config['skip'] = True
+    config['filter_size'] = 128
+
     # get model
-    if config['model'] == 0:
-        model = build_model_small(input_shape, output_shape, config)
-    elif config['model'] == 1:
-        model = build_model_mid(input_shape, output_shape, config)
-    elif config['model'] == 2:
-        model = build_model_HiFiGAN(input_shape, output_shape, config)
-   
-   
-    elif config['model'] == 8:
-        model = build_model_HiFiGAN_v8(input_shape, output_shape, config)
-    elif config['model'] == 81:
-        model = build_model_HiFiGAN_v81(input_shape, output_shape, config)
-    elif config['model'] == 811:
-        model = build_model_HiFiGAN_v811(input_shape, output_shape, config)
+    model = hifi(input_shape, config)
 
-
-    # --------------- training on HPC ----------------
-
-    elif config['model'] == 9:
-        model = build_model_CNN_v9(input_shape, output_shape, config)
-    elif config['model'] == 91:
-        model = build_model_CNN_v91(input_shape, output_shape, config)
-
-    elif config['model'] == 10:
-        # define some parameters
-        config['demucs_depth'] = 5
-        config['demucs_kernel'] = 8
-        config['demucs_stride'] = 1
-        config['demucs_starting_filter'] = 8
-        # get model
-        model = Demucs_v1(input_shape, config)
-
-    elif config['model'] == 101:
-        # define some parameters
-        config['demucs_depth'] = 5
-        config['demucs_kernel'] = 16
-        config['demucs_stride'] = 1
-        config['demucs_starting_filter'] = 8
-        # get model
-        model = Demucs_v1(input_shape, config)
-
-    # ---------------future training on HPC ----------------
-
-    elif config['model'] == 102:
-        # define some parameters
-        config['demucs_depth'] = 5
-        config['demucs_kernel'] = 8
-        config['demucs_stride'] = 2
-        config['demucs_starting_filter'] = 8
-        # get model
-        model = Demucs_strided(input_shape, config)
-
-
-
-
-    #-----------------------------------
 
     # compile model
-    model.compile(optimizer = keras.optimizers.legacy.Adam(learning_rate=config['learning_rate']),
-                  loss = CustomLoss(config)
-                  )
+    model.compile(optimizer = keras.optimizers.legacy.Adam(learning_rate=config['learning_rate'], clipnorm=0.5),
+                loss = CustomLoss(config)
+                )
 
     #save model name to config
     config['model_name'] = model.name 
@@ -206,7 +143,6 @@ def main():
     
 
     #-----------------------------------
-
 
     # start timer
     start = datetime.datetime.now()
@@ -223,8 +159,12 @@ def main():
     time = stop - start
     config['training_time'] = str(time)
     
+
     # initialize log_dir
-    log_dir = make_logdir()
+    log_dir = make_logdir(config)
+
+
+    #--------------------------------------------
 
     # save history
     # change type of elements in history.history to float (for json)
@@ -235,7 +175,11 @@ def main():
 
     # save model if running on hpc
     if config['HPC'] == 1:
-        model.save(log_dir + '/model.keras')        
+        model.save(log_dir + '/model.keras')    
+
+    # save model summary
+    with open(log_dir+'/modelsummary.txt', 'w') as f:
+        model.summary(print_fn=lambda x: f.write(x + '\n'))    
 
     # save config to log_dir
     with open(log_dir + '/config.json', 'w+') as fp:
@@ -257,42 +201,18 @@ def main():
     plt.grid(True)
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
-    plt.title('Training with ' + str(len(train_loss)) + ' epochs')
+    plt.title(config['model_name'] + ' - ' + config['loss_func'] + ' - ' + str(config['n_epochs']) + ' epochs')
     
     # save plot to disk
-    plt.savefig(log_dir + '/loss.png')
+    plt.savefig(log_dir + '/_0loss.png')
     plt.close()
 
 
     #--------------------------------------------
-    # preditct one speechfile from dataset
+    # predict, plot and save - input, target and prediction audio
 
-    # get one speechfile from dataset
-    speech_for_predicition = set_1_speechfile(valid_dataset, log_dir, config)
+    pred_plot_save(valid_dataset, model, log_dir, config)
 
-    # resample if necessary
-    if config['sr'] != 44100:
-        speech_for_predicition = librosa.resample(speech_for_predicition, orig_sr=44100, target_sr=22050)
-
-    # predict
-    y_pred_tf = model.predict(speech_for_predicition)
-    # change shape to (len(audio), 1)
-    y_pred_np = tf.squeeze(y_pred_tf, axis=-1).numpy()
-
-    # save plot to disk
-    plt.figure(figsize=(8, 4))
-    x = np.arange(0, len(y_pred_np)/int(config['sr']), 1/int(config['sr']))
-    plt.plot(x, y_pred_np)
-    plt.title('predicted')
-    plt.xlabel('Time in s')
-    plt.ylabel('Amplitude')
-    plt.savefig(log_dir + '/_predicted.png')
-    plt.close()
-    
-    # save audiofile with tensorflow
-    y_pred_tf = tf.squeeze(y_pred_tf, axis=-1)
-    audio_tf = tf.audio.encode_wav(y_pred_tf, int(config['sr']))
-    tf.io.write_file(log_dir + '/_predicted' + '.wav', audio_tf)
    
 
 # call main    

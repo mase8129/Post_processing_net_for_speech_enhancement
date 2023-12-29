@@ -883,7 +883,320 @@ def build_model_HiFiGAN_v811(input_shape, output_shape, config):
 
     return model
 
+
+
+def build_model_CNN_v9(input_shape, output_shape, config):
+    """CNN model with 128 filters and 32 kernel size
+    with skip connections"""
+
+    # input shape # (132300, 1)
+    # input layer # (Batchsize, 132300, 1)
+    input_layer = Input(shape=input_shape, name='input_layer')
+
+    filter_size = 128
+
+    # add 12 1d conv layers with skip connections
+
+    conv1 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(input_layer)
+    conv1 = BatchNormalization()(conv1)
+
+    conv2 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv1)
+    conv2 = BatchNormalization()(conv2)
+
+    conv3 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv2)
+    conv3 = BatchNormalization()(conv3)
+
+    conv4 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv3)
+    conv4 = BatchNormalization()(conv4)
+
+    conv5 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv4)
+    conv5 = BatchNormalization()(conv5)
+
+    conv6 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv5)
+    conv6 = BatchNormalization()(conv6)
+
+    conv7 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv6)
+    conv7 = BatchNormalization()(conv7)
+    #skip connection
+    conv7 = Add()([conv6, conv7])
+
+    conv8 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv7)
+    conv8 = BatchNormalization()(conv8)
+    #skip connection
+    conv8 = Add()([conv5, conv8])
+
+    conv9 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv8)
+    conv9 = BatchNormalization()(conv9)
+    #skip connection
+    conv9 = Add()([conv4, conv9])
+
+    conv10 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv9)
+    conv10 = BatchNormalization()(conv10)
+    #skip connection
+    conv10 = Add()([conv3, conv10])
+
+    conv11 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv10)
+    conv11 = BatchNormalization()(conv11)
+    #skip connection
+    conv11 = Add()([conv2, conv11])
+
+    conv12 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv11)
+    conv12 = BatchNormalization()(conv12)
+    #skip connection
+    conv12 = Add()([conv1, conv12])
+
+    # output layer
+    output_layer = Dense(1)(conv12)
+    #tanh activation
+    output_layer = keras.layers.Activation('tanh')(output_layer)
+
+    # get model
+    model = Model(inputs=input_layer, outputs=output_layer, name='CNN_v9')
+    # get model output shape
+    print(f'model output shape: {model.output_shape}')
+
+    return model
+
+
+def build_model_CNN_v91(input_shape, output_shape, config):
+    """CNN model with 128 filters and 32 kernel size
+    with one skip connection"""
+
+    # input shape # (132300, 1)
+    # input layer # (Batchsize, 132300, 1)
+    input_layer = Input(shape=input_shape, name='input_layer')
+
+    filter_size = 128
+
+    # add 12 1d conv layers with skip connection
+
+    conv1 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(input_layer)
+    conv1 = BatchNormalization()(conv1)
+
+    conv2 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv1)
+    conv2 = BatchNormalization()(conv2)
+
+    conv3 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv2)
+    conv3 = BatchNormalization()(conv3)
+
+    conv4 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv3)
+    conv4 = BatchNormalization()(conv4)
+
+    conv5 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv4)
+    conv5 = BatchNormalization()(conv5)
+
+    conv6 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv5)
+    conv6 = BatchNormalization()(conv6)
+
+
+    conv7 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv6)
+    conv7 = BatchNormalization()(conv7)
+
+    conv8 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv7)
+    conv8 = BatchNormalization()(conv8)
+
+    conv9 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv8)
+    conv9 = BatchNormalization()(conv9)
+
+    conv10 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv9)
+    conv10 = BatchNormalization()(conv10)
+
+    conv11 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv10)
+    conv11 = BatchNormalization()(conv11)
+
+    conv12 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv11)
+    conv12 = BatchNormalization()(conv12)
+
+    #skip connection
+    conv12 = Add()([conv1, conv12])
+
+    # output layer
+    output_layer = Dense(1)(conv12)
+    #tanh activation
+    output_layer = keras.layers.Activation('tanh')(output_layer)
+
+
+    # get model
+    model = Model(inputs=input_layer, outputs=output_layer, name='CNN_v91')
+    # get model output shape
+    print(f'model output shape: {model.output_shape}')
+
+    return model
+
+
+
+def autoencoder(input_shape, output_shape, config):
+    '''
+    Implementation of autoencoder, adjusted for speech enhancement
+    
+    References
+    ----------
+    [1] Alexandre Defossez, Gabriel Synnaeve, Yossi Adi (2020). Real Time Speech Enhancement in the Waveform Domain.
+        Interspeech 2020. https://doi.org/10.48550/arXiv.2006.12847
+    
+    '''
+    # Define list for skip connections
+    skip_connections = []
+
+    # input layer
+    input = Input(shape = input_shape)
+
+    filter = 8
+    depth = 5
+    kernel_size = 8
+    # biggest filter size = filter * 2**(depth-1)
+
+    x  = Conv1D(filters=1, kernel_size=1)(input)
+    # Encoder path
+    for i in range(depth):
+        x = Conv1D(filters=filter * 2**i, kernel_size=kernel_size, padding='same')(x)
+        x = keras.layers.Activation('tanh')(x)
+        x = BatchNormalization()(x)
+        skip_connections.append(x)
+    
+    # BLSTM Bottleneck
+    x = LSTM(filter * 2**(depth-1), return_sequences=True, return_state=False)(x)
+    x = LSTM(filter * 2**(depth-1), return_sequences=True, return_state=False)(x)
+
+    # Decoder Path
+    for i in range(depth):
+        x = Conv1DTranspose(filters=filter * 2**(depth-1-i), kernel_size=kernel_size, padding='same')(x)
+        x = keras.layers.Activation('tanh')(x)
+        x = BatchNormalization()(x)
+        skip = skip_connections.pop(-1)
+        x = Add()([x, skip])
+    
+    # output layer
+    output_layer = Dense(1)(x)
+
+    model = Model(inputs=input, outputs=output_layer, name='autoencoder')
+    return model
+
+
+
+def build_model_CNN_v92(input_shape, output_shape, config):
+    """CNN model with 128 starting filters (encoder-decoder style) and 32 kernel size
+    with one skip connection"""
+
+    # input shape # (132300, 1)
+    # input layer # (Batchsize, 132300, 1)
+    input_layer = Input(shape=input_shape, name='input_layer')
+
+    filter_size = 256
+
+    # add 12 1d conv layers with skip connection
+
+    conv1 = Conv1D(filters=256, kernel_size=32, padding='causal', activation='tanh')(input_layer)
+    conv1 = BatchNormalization()(conv1)
+
+    conv2 = Conv1D(filters=128, kernel_size=32, padding='causal', activation='tanh')(conv1)
+    conv2 = BatchNormalization()(conv2)
+
+    conv3 = Conv1D(filters=64, kernel_size=32, padding='causal', activation='tanh')(conv2)
+    conv3 = BatchNormalization()(conv3)
+
+    conv4 = Conv1D(filters=32, kernel_size=32, padding='causal', activation='tanh')(conv3)
+    conv4 = BatchNormalization()(conv4)
+
+    conv5 = Conv1D(filters=16, kernel_size=32, padding='causal', activation='tanh')(conv4)
+    conv5 = BatchNormalization()(conv5)
+
+    conv6 = Conv1D(filters=8, kernel_size=32, padding='causal', activation='tanh')(conv5)
+    conv6 = BatchNormalization()(conv6)
+
+
+    conv7 = Conv1D(filters=8, kernel_size=32, padding='causal', activation='tanh')(conv6)
+    conv7 = BatchNormalization()(conv7)
+
+    conv8 = Conv1D(filters=16, kernel_size=32, padding='causal', activation='tanh')(conv7)
+    conv8 = BatchNormalization()(conv8)
+
+    conv9 = Conv1D(filters=32, kernel_size=32, padding='causal', activation='tanh')(conv8)
+    conv9 = BatchNormalization()(conv9)
+
+    conv10 = Conv1D(filters=64, kernel_size=32, padding='causal', activation='tanh')(conv9)
+    conv10 = BatchNormalization()(conv10)
+
+    conv11 = Conv1D(filters=128, kernel_size=32, padding='causal', activation='tanh')(conv10)
+    conv11 = BatchNormalization()(conv11)
+
+    conv12 = Conv1D(filters=256, kernel_size=32, padding='causal', activation='tanh')(conv11)
+    conv12 = BatchNormalization()(conv12)
+
+    #skip connection
+    conv12 = Add()([conv1, conv12])
+
+    # output layer
+    output_layer = Dense(1)(conv12)
+    #tanh activation
+    output_layer = keras.layers.Activation('tanh')(output_layer)
+
+
+    # get model
+    model = Model(inputs=input_layer, outputs=output_layer, name='CNN_v92')
+    # get model output shape
+    print(f'model output shape: {model.output_shape}')
+
+    return model
+
+
+
+
 # --------------------- NEW --------------------------
+
+
+def hifi(input_shape, config):
+    """original model from hifi gan paper"""
+
+    input_layer = Input(shape=input_shape, name='input_layer')
+
+    filter_size = config['filter_size']
+    kernel = config['kernel']
+    padding = config['padding']
+    activation_func = config['activation_func']
+    skip = config['skip']
+    act_output = config['act_output']
+
+    # add 12 1d conv layers
+    conv1 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(input_layer)
+    conv2 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv1)
+    conv3 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv2)
+    conv4 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv3)
+    conv5 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv4)
+    conv6 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv5)
+    conv7 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv6)
+    conv8 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv7)
+    conv9 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv8)
+    conv10 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv9)
+    conv11 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv10)
+    conv12 = Conv1D(filters=filter_size, kernel_size=kernel, padding=padding, activation=activation_func)(conv11)
+    
+    if skip:
+        # add skip connection
+        conv12 = Add()([conv1, conv12])
+
+    # add output layer
+    output_layer = Dense(1)(conv12)
+
+    if act_output == 1:
+        #tanh activation
+        output_layer = keras.layers.Activation('tanh')(output_layer)
+
+    # get model
+    model = Model(inputs=input_layer, outputs=output_layer, name=f'hifi_f{filter_size}_k{kernel}_{padding}_Ac{activation_func}_skip{skip}_act{act_output}')
+    return model
+
+
+        
+
+
+
+
+
+
+
+# --------------------- Not ready yet --------------------------
+
 
 
 def Demucs_v1(input_shape, config):
@@ -978,151 +1291,6 @@ def Demucs_v1(input_shape, config):
     return model
 
 
-def build_model_CNN_v9(input_shape, output_shape, config):
-    """CNN model with 128 filters and 32 kernel size
-    with skip connections"""
-
-    # add skip connections from input to output
-    # input layer # (Batchsize, 132300, 1)
-    input_layer = Input(shape=input_shape, name='input_layer')
-
-    filter_size = 128
-
-    # add 12 1d conv layers with skip connections - encoder -decoder structure  
-
-    # encoder
-    conv1 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(input_layer)
-    conv1 = BatchNormalization()(conv1)
-
-    conv2 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv1)
-    conv2 = BatchNormalization()(conv2)
-
-    conv3 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv2)
-    conv3 = BatchNormalization()(conv3)
-
-    conv4 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv3)
-    conv4 = BatchNormalization()(conv4)
-
-    conv5 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv4)
-    conv5 = BatchNormalization()(conv5)
-
-    conv6 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv5)
-    conv6 = BatchNormalization()(conv6)
-
-    # decoder
-    conv7 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv6)
-    conv7 = BatchNormalization()(conv7)
-    #skip connection
-    conv7 = Add()([conv6, conv7])
-
-    conv8 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv7)
-    conv8 = BatchNormalization()(conv8)
-    #skip connection
-    conv8 = Add()([conv5, conv8])
-
-    conv9 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv8)
-    conv9 = BatchNormalization()(conv9)
-    #skip connection
-    conv9 = Add()([conv4, conv9])
-
-    conv10 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv9)
-    conv10 = BatchNormalization()(conv10)
-    #skip connection
-    conv10 = Add()([conv3, conv10])
-
-    conv11 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv10)
-    conv11 = BatchNormalization()(conv11)
-    #skip connection
-    conv11 = Add()([conv2, conv11])
-
-    conv12 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv11)
-    conv12 = BatchNormalization()(conv12)
-    #skip connection
-    conv12 = Add()([conv1, conv12])
-
-    # output layer
-    output_layer = Dense(1)(conv12)
-    # batch normalization
-    output_layer = BatchNormalization()(output_layer)
-
-    # get model
-    model = Model(inputs=input_layer, outputs=output_layer, name='CNN_v9')
-    # get model output shape
-    print(f'model output shape: {model.output_shape}')
-
-    return model
-
-
-def build_model_CNN_v91(input_shape, output_shape, config):
-    """CNN model with 128 filters and 32 kernel size
-    with one skip connection"""
-
-    # add skip connections from input to output
-    # input layer # (Batchsize, 132300, 1)
-    input_layer = Input(shape=input_shape, name='input_layer')
-
-    filter_size = 128
-
-    # add 12 1d conv layers with skip connections - encoder -decoder structure  
-
-    # encoder
-    conv1 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(input_layer)
-    conv1 = BatchNormalization()(conv1)
-
-    conv2 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv1)
-    conv2 = BatchNormalization()(conv2)
-
-    conv3 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv2)
-    conv3 = BatchNormalization()(conv3)
-
-    conv4 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv3)
-    conv4 = BatchNormalization()(conv4)
-
-    conv5 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv4)
-    conv5 = BatchNormalization()(conv5)
-
-    conv6 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv5)
-    conv6 = BatchNormalization()(conv6)
-
-    # decoder
-    conv7 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv6)
-    conv7 = BatchNormalization()(conv7)
-    #skip connection
-
-    conv8 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv7)
-    conv8 = BatchNormalization()(conv8)
-    #skip connection
-
-    conv9 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv8)
-    conv9 = BatchNormalization()(conv9)
-    #skip connection
-
-    conv10 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv9)
-    conv10 = BatchNormalization()(conv10)
-    #skip connection
-
-    conv11 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv10)
-    conv11 = BatchNormalization()(conv11)
-    #skip connection
-
-    conv12 = Conv1D(filters=filter_size, kernel_size=32, padding='causal', activation='tanh')(conv11)
-    conv12 = BatchNormalization()(conv12)
-    #skip connection
-    conv12 = Add()([conv1, conv12])
-
-    # output layer
-    output_layer = Dense(1)(conv12)
-    # batch normalization
-    output_layer = BatchNormalization()(output_layer)
-
-    # get model
-    model = Model(inputs=input_layer, outputs=output_layer, name='CNN_v91')
-    # get model output shape
-    print(f'model output shape: {model.output_shape}')
-
-    return model
-
-# --------------------- Improving the models --------------------------
 
 
 def Demucs_strided(input_shape, config):
@@ -1235,11 +1403,6 @@ def Demucs_strided(input_shape, config):
 
     model = Model(inputs=input, outputs=x, name='Demucs_strided')
     return model
-
-
-
-
-# --------------------- Not ready yet --------------------------
 
 
 
